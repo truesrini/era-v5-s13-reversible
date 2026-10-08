@@ -41,14 +41,37 @@ def log(*a):
 
 # ----------------------------------------------------------------------------- mount
 
+LOCAL_FALLBACK = "/content/era-v5-s13-nodrive"
+
+
+def _drive_ready():
+    return os.path.isdir("/content/drive/MyDrive")
+
+
 def mount(drive=None):
-    """Mount Drive (no-op outside Colab or if already mounted) and create the folders."""
+    """Mount Drive (no-op outside Colab or if already mounted) and create the folders.
+
+    If Drive cannot be mounted at all (access declined, a Workspace account that blocks it, a mount
+    that keeps timing out), fall back to a folder on the runtime's own disk rather than stopping the
+    notebook: the runs still train and log, they just will not survive a disconnect."""
     global DRIVE
     if drive:
         DRIVE = drive
-    if not os.path.ismount("/content/drive") and DRIVE.startswith("/content/drive"):
-        from google.colab import drive as gdrive  # only exists on Colab
-        gdrive.mount("/content/drive")
+    if DRIVE.startswith("/content/drive") and not _drive_ready():
+        try:
+            from google.colab import drive as gdrive  # only exists on Colab
+            try:
+                gdrive.mount("/content/drive")
+            except Exception as e:  # a half-finished earlier mount leaves the mountpoint busy
+                log(f"[drive] first mount attempt failed ({type(e).__name__}: {e}); retrying with force_remount")
+                gdrive.mount("/content/drive", force_remount=True)
+        except Exception as e:
+            log(f"[drive] could not mount Google Drive: {type(e).__name__}: {e}")
+        if not _drive_ready():
+            DRIVE = LOCAL_FALLBACK
+            log("[drive] WARNING: continuing WITHOUT Google Drive. Training works, but results and checkpoints "
+                f"are kept only in {DRIVE} and are lost if this runtime disconnects. Re-run this cell after "
+                "fixing Drive access to turn persistence back on.")
     for _, d in DIRS:
         os.makedirs(os.path.join(DRIVE, d), exist_ok=True)
     log(f"[drive] {DRIVE}")
