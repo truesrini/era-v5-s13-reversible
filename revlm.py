@@ -32,8 +32,10 @@ DATA = os.path.join(HERE, "data")
 RESULTS = os.path.join(HERE, "results")
 
 # Mixed precision is off by default: on the GTX 1660 Ti (TU116, no tensor cores) cuBLAS fp16 matmuls measured
-# 0.46 TFLOPS against 4.1 TFLOPS in fp32, so fp32 training is several times faster on this card.
+# 0.46 TFLOPS against 4.1 TFLOPS in fp32, so fp32 training is several times faster on this card. On a GPU that
+# does have tensor cores the answer flips, so `colab_env.choose_precision()` measures both and sets these two.
 AMP = False
+AMP_DTYPE = torch.float16
 
 
 def limit_to_dedicated_vram(margin_mib=200):
@@ -46,7 +48,7 @@ def limit_to_dedicated_vram(margin_mib=200):
 
 
 def amp_ctx():
-    return torch.autocast("cuda", dtype=torch.float16, enabled=AMP)
+    return torch.autocast("cuda", dtype=AMP_DTYPE, enabled=AMP)
 
 
 # coefficients of the generic two-step rule v = cs*s + cu*u + k*f(u)
@@ -337,7 +339,7 @@ def train(**kw):
                 h=cfg["h"], alpha=cfg["alpha"]).cuda()
     opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], betas=(0.9, 0.95), weight_decay=cfg["wd"],
                             fused=True)
-    scaler = torch.amp.GradScaler("cuda", enabled=AMP)
+    scaler = torch.amp.GradScaler("cuda", enabled=AMP and AMP_DTYPE is torch.float16)
     train_data, val_data = Tokens("train"), Tokens("val")
     gen = torch.Generator().manual_seed(cfg["seed"])
 
@@ -363,7 +365,8 @@ def train(**kw):
     if start == 0:
         log(f"[{cfg['name']}] variant={cfg['variant']} h={cfg['h']} alpha={cfg['alpha']} params={model.n_params() / 1e6:.2f}M "
         f"batch={B}x{T}={tok_per_step} tokens/step steps={steps} tokens={steps * tok_per_step / 1e6:.1f}M "
-        f"lr={cfg['lr']} {torch.cuda.get_device_name(0)}")
+        f"lr={cfg['lr']} precision={'fp32' if not AMP else str(AMP_DTYPE).split('.')[-1]} "
+        f"{torch.cuda.get_device_name(0)}")
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
     t0, loss_acc, n_acc = time.time(), 0.0, 0
@@ -416,6 +419,7 @@ def train(**kw):
     hist["val_step"].append(steps)
     hist["val_loss"].append(final_val)
     res = dict(cfg=cfg, params=model.n_params(), steps=steps, tokens_seen=steps * tok_per_step,
+               gpu=torch.cuda.get_device_name(0), precision=("fp32" if not AMP else str(AMP_DTYPE).split(".")[-1]),
                final_train_loss=float(np.mean(hist["loss"][-5:])), final_val_loss=final_val,
                tok_per_s=steps * tok_per_step / train_time, train_minutes=train_time / 60,
                peak_alloc_mib=peak, peak_reserved_mib=peak_res, amp_skipped_steps=int(skipped), hist=hist)
@@ -464,7 +468,7 @@ def probe(variant, batch, steps=3, h=1.0, n_layer=10, ctx=512):
     try:
         model = GPT(variant=variant, h=h, n_layer=n_layer, ctx=ctx).cuda()
         opt = torch.optim.AdamW(model.parameters(), lr=1e-4, fused=True)
-        scaler = torch.amp.GradScaler("cuda", enabled=AMP)
+        scaler = torch.amp.GradScaler("cuda", enabled=AMP and AMP_DTYPE is torch.float16)
         gen = torch.Generator().manual_seed(0)
         data = Tokens("val")
         times = []
