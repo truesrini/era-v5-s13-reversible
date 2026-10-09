@@ -1,4 +1,4 @@
-"""Google Colab support for the Session 13 runs: Drive persistence, and picking the precision.
+"""Colab / Kaggle support for the Session 13 runs: persistence across lost runtimes, and picking the precision.
 
 A Colab runtime is deleted the moment it disconnects, and a free session disconnects long before
 all the runs in `reversible_llm_colab.ipynb` have finished. So everything that must survive a
@@ -42,6 +42,33 @@ def log(*a):
 # ----------------------------------------------------------------------------- mount
 
 LOCAL_FALLBACK = "/content/era-v5-s13-nodrive"
+KAGGLE_STATE = "/kaggle/working/era-v5-s13"
+
+
+def on_kaggle():
+    return os.path.isdir("/kaggle/working")
+
+
+def _kaggle_mount():
+    """Kaggle has no Drive; what persists is /kaggle/working, saved as the notebook version's output.
+    So that folder plays Drive's part. To continue from an earlier version, attach that version's
+    output as an input (Add Input > Your Work > this notebook): it appears under /kaggle/input/, and
+    its era-v5-s13/ folder is copied in here first, so finished runs replay and an interrupted one
+    resumes exactly as on Colab."""
+    global DRIVE
+    import glob
+    DRIVE = KAGGLE_STATE
+    for _, d in DIRS:
+        os.makedirs(os.path.join(DRIVE, d), exist_ok=True)
+    earlier = sorted(set(glob.glob("/kaggle/input/*/era-v5-s13") + glob.glob("/kaggle/input/*/*/era-v5-s13")
+                         + glob.glob("/kaggle/input/*/*/*/era-v5-s13")))
+    for src in earlier:
+        n = sum(len(_mirror(os.path.join(src, d), os.path.join(DRIVE, d))) for _, d in DIRS)
+        log(f"[kaggle] carried over {n} file(s) from an earlier version's output: {src}")
+    if not earlier:
+        log("[kaggle] no earlier output attached as input: starting fresh")
+    log(f"[kaggle] state folder (saved as this version's output): {DRIVE}")
+    return DRIVE
 
 
 def _drive_ready():
@@ -57,6 +84,8 @@ def mount(drive=None):
     global DRIVE
     if drive:
         DRIVE = drive
+    if on_kaggle():
+        return _kaggle_mount()
     if DRIVE.startswith("/content/drive") and not _drive_ready():
         try:
             from google.colab import drive as gdrive  # only exists on Colab

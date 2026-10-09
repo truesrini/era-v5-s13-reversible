@@ -4,7 +4,26 @@
 run plan on a Colab GPU, with the state kept in Google Drive so that a disconnected runtime costs minutes rather
 than a whole run.
 
-## Steps
+## Kaggle (recommended if Colab will not cooperate)
+
+Kaggle's free GPUs (30 h a week) run a notebook **in the background**: once committed, it keeps going with the
+browser closed, for up to 12 hours, which is enough for every run here. Kaggle does not need Google Drive.
+
+1. Sign in at kaggle.com and verify your phone number (Settings > Phone verification). Without it Kaggle offers no
+   GPU and no internet.
+2. Create > New Notebook, then File > Import Notebook > GitHub, and paste
+   `https://github.com/truesrini/era-v5-s13-reversible/blob/colab-runs/reversible_llm_colab.ipynb`.
+3. In the right-hand panel: Session options > Accelerator > **GPU T4 x2**, and Internet > **On**. Choose T4 rather than
+   P100: recent PyTorch builds dropped the P100's architecture.
+4. Save Version (top right) > **Save & Run All (Commit)** > Save. You can close the browser now.
+5. Check progress or results under the notebook's Versions; the logs are in each cell's output and every file is in
+   the version's Output tab under `era-v5-s13/` (`results/summary.csv`, `results/*.log`, the plots).
+
+If a version stops before finishing (the 12-hour cap, or a Kaggle error), open the notebook, Add Input > Your Work >
+pick this notebook's last version, and commit again. Its `era-v5-s13/` output is copied in first, so finished runs
+replay and the interrupted one resumes from its checkpoint.
+
+## Colab steps
 
 1. Runtime > Change runtime type > **GPU** (T4 is enough; L4 or A100 is roughly 2-4x faster).
 2. Open the notebook:
