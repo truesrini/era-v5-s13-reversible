@@ -60,6 +60,10 @@ is clearly faster. On this T4 it kept fp32, so every run above is fp32, the same
 
 ## Running it
 
+The training logs of every run above, the results table and the loss curves are in
+`reversible_llm_colab_results.ipynb`, and the raw logs are `results/<run>.log` in the run's Drive folder.
+
+
 `reversible_llm_colab.ipynb` runs everything on a Colab or Kaggle GPU, keeping results and checkpoints in Google
 Drive (or Kaggle's output) so a disconnect only costs a few minutes; see [COLAB.md](COLAB.md). `reversible_llm.ipynb`
 is the original laptop notebook (GTX 1660 Ti, 6 GB), driven by `run_notebook.py`.
